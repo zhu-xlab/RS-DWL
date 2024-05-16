@@ -16,9 +16,8 @@ class TestOptions():
         parser.add_argument("--model", type=str, default='SegFormer', 
                                 choices=['DeepLab_V3plus', 'HRNet', 'FCDenseNet67', 'EfficientUNet', \
                                          'Swin_Transformer', 'SegFormer', 'BuildFormer'])
-        parser.add_argument("--method", type=str, default='AEL', \
-                                choices=['Sup', 'ST', 'ST+DL', 'ST+WL', 'FixMatch', 'SepFixMatch', 'DistMatch', 
-                                         'CPS', 'CCT', 'CutMix', 'UniMatch', 'CCVC', 'U2PL', 'AEL', 'LSST'])
+        parser.add_argument("--method", type=str, default='DWL', \
+                                choices=['Sup', 'ST', 'FixMatch', 'DWL'])
         parser.add_argument("--alpha", type=float, default=0.5, help="set trade-off between label and unlabeled set.")
         parser.add_argument("--save-dir", type=str, default='./checkpoints', help="Where to save tSNEs.")
         parser.add_argument("--num-workers", type=int, default=4, help="number of threads.")
