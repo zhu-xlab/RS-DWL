@@ -27,7 +27,7 @@ First, please organize your datasets according to the following structure with D
 │   ├── val.txt
 │   ├── test.txt
 ```
-Here, in  'images/' and 'labels/', all the images and labels needs to be cropped to 512x512. In 'lists', 'train_percent%_labeled.txt' and 'train_percent%_unlabeled.txt' contain the paths of labeled and unlabeled image-label pairs.
+Here, in  'images/' and 'labels/', all the images and labels should be cropped to 512x512. In 'lists', 'train_percent%_labeled.txt' and 'train_percent%_unlabeled.txt' contain the paths of labeled and unlabeled image-label pairs.
 
 
 # Pretrained Weights
