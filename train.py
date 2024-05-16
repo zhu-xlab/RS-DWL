@@ -77,7 +77,6 @@ def main():
     losses_u = AverageMeter()
     probs_l = AverageMeter()
     probs_u = AverageMeter()
-    qhat = (torch.ones([1, args.num_classes], dtype=torch.float)/args.num_classes).cuda()
 
     #-------------------------------------------------------------------#
     # Training, K-means, and Evaluation
@@ -127,35 +126,6 @@ def main():
                 losses_u.update(loss_u.item(), b)  
                 probs_u.update(prob_uw.mean(dim=0).detach().cpu().numpy())  
 
-            if method == 'DebiasPL':
-                def avgpool2d(input):
-                    return F.avg_pool2d(input, kernel_size=input.size()[2:]).view(input.size(0), -1)
-
-                def update_qhat(probs, qhat, momentum, qhat_mask=None):
-                    if qhat_mask is not None:
-                        mean_prob = probs.detach()*qhat_mask.detach().unsqueeze(dim=-1)
-                    else:
-                        mean_prob = probs.detach().mean(dim=0).unsqueeze(dim=0)
-                    qhat = momentum * qhat + (1 - momentum) * mean_prob
-                    return qhat
-
-                with torch.no_grad():
-                    logit_uw = model(img_uw)  
-                qhat = update_qhat(torch.softmax(avgpool2d(logit_uw.detach()), dim=-1), \
-                        qhat, momentum=0.999, qhat_mask=None)
-                logit_us = model(img_us)   
-
-                # unsupervised loss
-                debiased_prob_uw = F.softmax(logit_uw.detach() - 1.0*torch.log(qhat.unsqueeze(dim=-1).unsqueeze(dim=-1)), dim=1)
-                max_prob, pseudo_gt = torch.max(debiased_prob_uw, dim=1)
-                mask = max_prob.ge(0.7).float()
-                loss_u = (F.cross_entropy(logit_us, pseudo_gt, \
-                            ignore_index=args.ignore_index, reduction='none')*mask).mean()
-                
-                loss = loss_l + loss_u  
-                losses_u.update(loss_u.item(), b)  
-                probs_u.update(debiased_prob_uw.mean(dim=0).detach().cpu().numpy())  
-
             if method == 'ST':
                 with torch.no_grad():
                     logit_uw = model(img_uw)   
@@ -172,61 +142,7 @@ def main():
                 losses_u.update(loss_u.item(), b)  
                 probs_u.update(prob_uw.mean(dim=0).detach().cpu().numpy())  
 
-            if method == 'ST+DL':
-                with torch.no_grad():
-                    logit_uw = model(img_uw)   
-                _, logit_us = model(img_us, return_pseudo_pred=True)
-
-                # fixmatch loss
-                thr = args.confidence_thr
-                prob_uw = torch.softmax(logit_uw.detach(), dim=1)
-                max_prob, pseudo_gt = torch.max(prob_uw, dim=1)
-                loss_u = (F.cross_entropy(logit_us, pseudo_gt, \
-                            ignore_index=args.ignore_index, reduction='none')).mean()
-                
-                loss = loss_l + loss_u  
-                losses_u.update(loss_u.item(), b)  
-                probs_u.update(prob_uw.mean(dim=0).detach().cpu().numpy())  
-
-            if method == 'ST+WL':
-                # get originial and downsampled logits
-                with torch.no_grad():
-                    logit_uw = model(img_uw)
-                    logit_uw = logit_uw.detach()
-                logit_us = model(img_us)
-
-                # fixmatch loss
-                thr_high = args.confidence_thr
-                prob_uw = torch.softmax(logit_uw.detach(), dim=1)
-                max_prob_uw, pl_uw = torch.max(prob_uw, dim=1)  # N,  N
-                probs_u.update(prob_uw.mean(dim=0).detach().cpu().numpy())  
-
-                # distribution loss
-                memory_n_batches = 50
-                prob_l_bar = F.interpolate(prob_l, size=(64, 64), mode='nearest').permute(0,2,3,1).reshape(-1, args.num_classes)          
-                prob_uw_bar = F.interpolate(prob_uw, size=(64, 64), mode='nearest').permute(0,2,3,1).reshape(-1, args.num_classes)          
-                gt_l_bar = F.interpolate(gt_l.float().unsqueeze(dim=1), size=(64, 64), mode='nearest').squeeze(dim=1).reshape(-1).long()           
-                pl_uw_bar = F.interpolate(pl_uw.float().unsqueeze(dim=1), size=(64, 64), mode='nearest').squeeze(dim=1).reshape(-1).long()           
-                gt_u_bar = F.interpolate(gt_u.float().unsqueeze(dim=1), size=(64, 64), mode='nearest').squeeze(dim=1).reshape(-1).long()          
-                cls_memory_l = update_cls_memory(cls_memory_l, prob_l_bar.detach(), gt_l_bar, memory_n_batches)
-                cls_memory_u = update_cls_memory(cls_memory_u, prob_uw_bar.detach(), pl_uw_bar, memory_n_batches)
-                cls_memory_gt = update_cls_memory(cls_memory_gt, prob_uw_bar.detach(), gt_u_bar, memory_n_batches)
-                cls_bins_u  = sample_cls_bins(cls_memory_u)
-                cls_bins_gt = sample_cls_bins(cls_memory_gt)
-
-                logit_us = logit_us.permute(0,2,3,1).reshape(-1, args.num_classes)
-                pl_uw, max_prob_uw = pl_uw.reshape(-1), max_prob_uw.reshape(-1)
-                wgt_u = calc_wgt_bins(cls_bins_u, max_prob_uw, pl_uw, iters, total_iters)
-                loss_u = (F.cross_entropy(logit_us, pl_uw, \
-                            ignore_index=args.ignore_index, reduction='none')*wgt_u).mean() 
-                if iters > memory_n_batches:
-                    loss_u *= 1
-                else:
-                    loss_u *= 0
-                loss = loss_l + loss_u  
-                losses_u.update(loss_u.item(), b)  
-
-            if method == 'DistMatch':
+            if method == 'DWL':
                 # get originial and downsampled logits
                 with torch.no_grad():
                     logit_uw = model(img_uw)
@@ -262,40 +178,7 @@ def main():
                     loss_u *= 0
                 loss = loss_l + loss_u  
                 losses_u.update(loss_u.item(), b)  
-
-                # if iters % 50 == 0:
-                #     max_prob_uw, pl_uw = torch.max(prob_uw, dim=1)
-                #     max_prob_uw = (max_prob_uw*255).detach().cpu().numpy().astype(np.uint8)
-                #     pl_uw = pl_uw.detach().cpu().numpy().astype(np.uint8)
-                #     wgt_u = (wgt_u.resize(512, 512)*255).detach().cpu().numpy().astype(np.uint8)
-
-                #     for cnt in range(args.batch_size):
-                #         img_path = imgs_path[cnt].replace('./', '').replace('/', '_')
-                #         wgt_path = imgs_path[cnt].replace('./', '').replace('/', '_').replace('.png', '_wgt.png')
-                #         prob_path = imgs_path[cnt].replace('./', '').replace('/', '_').replace('.png', '_prob.png')
-                #         pl_path = imgs_path[cnt].replace('./', '').replace('/', '_').replace('.png', '_pl.png')
-                #         img_path = os.path.join('./wgts', img_path)
-                #         wgt_path = os.path.join('./wgts', wgt_path)
-                #         prob_path = os.path.join('./wgts', prob_path)
-                #         pl_path = os.path.join('./wgts', pl_path)
-                #         wgt = wgt_u
-                #         prob = max_prob_uw[cnt]
-                #         pl = pl_uw[cnt]
-
-                #         mean = [0.485, 0.456, 0.406]
-                #         std = [0.229, 0.224, 0.225]
-                #         # 先将图像的通道顺序由 (C, H, W) 转换为 (H, W, C)
-                #         img_uw = img_uw.detach().cpu().squeeze(dim=0).permute(1, 2, 0)                        
-                #         # 逆标准化操作：乘以标准差并添加均值
-                #         img_uw = img_uw * torch.tensor(std) + torch.tensor(mean)
-                #         # 将像素值裁剪到 [0, 255] 范围内
-                #         img_uw = (torch.clamp(img_uw, 0, 1)*255).numpy().astype(np.uint8)
-
-                #         cv2.imwrite(wgt_path, wgt)
-                #         cv2.imwrite(prob_path, prob)
-                #         cv2.imwrite(pl_path, pl)
-                #         cv2.imwrite(img_path, img_uw)
-
+                
             loss.backward()
             losses.update(loss.item(), b)
             optimizer.step()
@@ -360,7 +243,7 @@ def main():
                 np.savetxt(f, cls_bins_u.detach().cpu().numpy(), fmt='%0.5f') 
                 f.write("---" + "\n")
 
-        if method == 'ST+DL' or method == 'DistMatch':
+        if method == 'ST+DL' or method == 'DWL':
             if args.model == 'SegFormer':
                 for param, pseudo_param in zip(model.decoder.linear_pred.parameters(), model.decoder.pseudo_linear_pred.parameters()):
                     param.data = pseudo_param.data * args.alpha + param.data * (1-args.alpha)
