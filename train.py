@@ -9,7 +9,6 @@ from models import CreateModel
 import numpy as np
 from evaluate import evaluate
 import random
-from losses import *
 from utils.util import *
 import cv2
 
