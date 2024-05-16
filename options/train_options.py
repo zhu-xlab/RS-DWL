@@ -16,8 +16,8 @@ class TrainOptions():
         parser.add_argument("--model", type=str, default='EfficientUNet', 
                                 choices=['DeepLab_V3plus', 'HRNet', 'FCDenseNet67', 'EfficientUNet', \
                                          'Swin_Transformer', 'SegFormer', 'BuildFormer'])
-        parser.add_argument("--method", type=str, default='DistMatch', \
-                                choices=['Sup', 'ST', 'ST+DL', 'ST+WL', 'FixMatch', 'SepFixMatch', 'DistMatch', 'DebiasPL'])
+        parser.add_argument("--method", type=str, default='DWL', \
+                                choices=['Sup', 'ST','FixMatch', 'DWL'])
         parser.add_argument("--alpha", type=float, default=1, help="set trade-off between label and unlabeled set.")
         parser.add_argument("--gpu", type=int, default=0, help="set GPU.")
 
